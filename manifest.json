@@ -12,6 +12,7 @@
     "https://www.dm.de/*",
     "https://shop.rewe.de/*",
     "https://*.pages.dev/*",
+    "https://*.workers.dev/*",
     "http://localhost/*"
   ],
   "background": {
@@ -21,6 +22,7 @@
     {
       "matches": [
         "https://*.pages.dev/*",
+        "https://*.workers.dev/*",
         "http://localhost/*"
       ],
       "js": ["webapp-bridge.js"],
