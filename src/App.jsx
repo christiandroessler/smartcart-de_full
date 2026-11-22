@@ -7,7 +7,6 @@ import {
   Minus,
   Trash2,
   Sparkles,
-  CheckCircle2,
   ExternalLink,
   Store,
   Tag,
@@ -21,54 +20,17 @@ import {
   ShoppingBag,
   Cloud,
   RefreshCw,
-  Chrome
+  Chrome,
+  PlusCircle,
+  Clock
 } from 'lucide-react';
 
 const STORES = {
-  dm: { id: 'dm', name: 'dm-drogerie', short: 'dm', color: 'bg-blue-900 text-white', badge: 'bg-blue-100 text-blue-900 border-blue-200', onlineOrder: true },
-  rewe: { id: 'rewe', name: 'REWE Markt', short: 'REWE', color: 'bg-red-600 text-white', badge: 'bg-red-100 text-red-800 border-red-200', onlineOrder: true },
-  lidl: { id: 'lidl', name: 'Lidl Filiale', short: 'Lidl', color: 'bg-yellow-400 text-blue-950', badge: 'bg-yellow-100 text-yellow-900 border-yellow-300', onlineOrder: false },
-  aldi: { id: 'aldi', name: 'Aldi Filiale', short: 'Aldi', color: 'bg-sky-600 text-white', badge: 'bg-sky-100 text-sky-900 border-sky-200', onlineOrder: false },
+  dm: { id: 'dm', name: 'dm-drogerie', short: 'dm', color: 'bg-blue-900 text-white', onlineOrder: true },
+  rewe: { id: 'rewe', name: 'REWE Markt', short: 'REWE', color: 'bg-red-600 text-white', onlineOrder: true },
+  lidl: { id: 'lidl', name: 'Lidl Filiale', short: 'Lidl', color: 'bg-yellow-400 text-blue-950', onlineOrder: false },
+  aldi: { id: 'aldi', name: 'Aldi Filiale', short: 'Aldi', color: 'bg-sky-600 text-white', onlineOrder: false },
 };
-
-const FALLBACK_PRODUCTS = [
-  {
-    id: 'hafermilch', name: 'Bio Haferdrink Barista', category: 'Milch & Ersatz', unit: '1 L', baseUnit: 'L', baseFactor: 1,
-    prices: {
-      dm: { price: 1.45, promo: false, externalId: '734912', brandName: 'dmBio Haferdrink Barista' },
-      rewe: { price: 1.79, promo: false, externalId: '8412093', brandName: 'REWE Bio Haferdrink' },
-      lidl: { price: 1.15, promo: true, promoLabel: 'KW-Angebot -20%', brandName: 'Vemondo Bio Haferdrink' },
-      aldi: { price: 1.29, promo: false, brandName: 'MyVay Bio Haferdrink' },
-    },
-  },
-  {
-    id: 'magerquark', name: 'Speisequark Magerstufe', category: 'Kühlregal', unit: '500 g', baseUnit: 'kg', baseFactor: 0.5,
-    prices: {
-      dm: { price: null },
-      rewe: { price: 1.39, promo: false, externalId: '1049281', brandName: 'ja! Speisequark Magerstufe' },
-      lidl: { price: 1.35, promo: false, brandName: 'Milbona Speisequark' },
-      aldi: { price: 1.19, promo: true, promoLabel: 'Super-Wochenendpreis', brandName: 'Milsani Speisequark' },
-    },
-  },
-  {
-    id: 'spaghetti', name: 'Spaghetti Hartweizengrieß', category: 'Vorrat', unit: '500 g', baseUnit: 'kg', baseFactor: 0.5,
-    prices: {
-      dm: { price: 1.15, promo: false, externalId: '582910', brandName: 'dmBio Spaghetti' },
-      rewe: { price: 0.79, promo: false, externalId: '3910482', brandName: 'ja! Spaghetti' },
-      lidl: { price: 0.79, promo: false, brandName: 'Combino Spaghetti' },
-      aldi: { price: 0.69, promo: true, promoLabel: 'Wochenaktion', brandName: 'Cucina Spaghetti' },
-    },
-  },
-  {
-    id: 'toilettenpapier', name: 'Toilettenpapier 3-lagig', category: 'Drogerie', unit: '10 Rollen', baseUnit: 'Rolle', baseFactor: 10,
-    prices: {
-      dm: { price: 3.45, promo: false, externalId: '129482', brandName: 'Sanft&Sicher 3-lagig 10x200' },
-      rewe: { price: 3.79, promo: false, externalId: '5019283', brandName: 'ja! Toilettenpapier 3-lagig' },
-      lidl: { price: 3.45, promo: false, brandName: 'Floralys Toilettenpapier' },
-      aldi: { price: 3.39, promo: false, brandName: 'Kokett Toilettenpapier' },
-    },
-  },
-];
 
 function getAldiRegion(plz) {
   const prefix = parseInt(plz.slice(0, 2), 10);
@@ -85,7 +47,7 @@ const formatEur = (val) =>
     : val.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 
 export default function App() {
-  const [products, setProducts] = useState(FALLBACK_PRODUCTS);
+  const [products, setProducts] = useState([]);
   const [plz, setPlz] = useState('37308');
   const [plzInput, setPlzInput] = useState('37308');
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,9 +55,27 @@ export default function App() {
   const [strategy, setStrategy] = useState('split');
   const [shoppingList, setShoppingList] = useState([]);
   const [userEmail, setUserEmail] = useState('default');
-  const [syncStatus, setSyncStatus] = useState('loading'); // 'loading' | 'synced' | 'offline'
+  const [syncStatus, setSyncStatus] = useState('loading');
   const [extensionInstalled, setExtensionInstalled] = useState(false);
 
+  // Live-Preisabruf Status
+  const [priceSyncState, setPriceSyncState] = useState({ running: false, message: '' });
+
+  // Neues Produkt Modal
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [newProd, setNewProd] = useState({
+    name: '',
+    category: 'Milch & Kühlregal',
+    unit: '1 Stück',
+    rewePrice: '',
+    reweId: '',
+    dmPrice: '',
+    dmDan: '',
+    lidlPrice: '',
+    aldiPrice: '',
+  });
+
+  // Checkout Modal
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [dmDeliveryMode, setDmDeliveryMode] = useState('express');
   const [reweDeliveryMode, setReweDeliveryMode] = useState('pickup');
@@ -103,12 +83,23 @@ export default function App() {
   const [copiedJson, setCopiedJson] = useState(false);
   const [checkedOfflineItems, setCheckedOfflineItems] = useState({});
 
-  // Prüfen ob die SmartCart Chrome-Extension aktiv ist
+  const loadProducts = useCallback(async () => {
+    const prodRes = await fetch('/api/products');
+    if (prodRes.ok) {
+      const prodData = await prodRes.json();
+      if (prodData.ok && Array.isArray(prodData.products)) {
+        setProducts(prodData.products);
+      }
+    }
+  }, []);
+
+  // Kommunikation mit Chrome-Extension (Warenkorb + REWE Live-Preise)
   useEffect(() => {
-    const handleExtensionPing = (event) => {
+    const handleExtensionMessage = async (event) => {
       if (event.data?.type === 'SMARTCART_EXTENSION_READY') {
         setExtensionInstalled(true);
       }
+
       if (event.data?.type === 'SMARTCART_CART_RESULT') {
         const { store, status, count } = event.data;
         setOrderFeedback((prev) => ({
@@ -116,28 +107,42 @@ export default function App() {
           [store]: status === 'ok' ? `Erfolgreich (${count} Artikel im Tab befüllt)` : 'Tab geöffnet – Bitte Shop-Login prüfen',
         }));
       }
-    };
-    window.addEventListener('message', handleExtensionPing);
-    window.postMessage({ type: 'SMARTCART_PING_EXTENSION' }, '*');
-    return () => window.removeEventListener('message', handleExtensionPing);
-  }, []);
 
-  // Initiales Laden von Produkten und gespeicherter Liste aus Cloudflare D1
+      if (event.data?.type === 'SMARTCART_REWE_PRICES_RESULT') {
+        const updates = event.data.updates || [];
+        if (updates.length > 0) {
+          await fetch('/api/sync-prices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates }),
+          });
+          await loadProducts();
+        }
+        setPriceSyncState((prev) => ({
+          running: false,
+          message: `${prev.message} · REWE: ${updates.length} Live-Preise aktualisiert`,
+        }));
+      }
+
+      if (event.data?.type === 'SMARTCART_REWE_PRICES_ERROR') {
+        setPriceSyncState((prev) => ({
+          running: false,
+          message: `${prev.message} · REWE-Abruf fehlgeschlagen`,
+        }));
+      }
+    };
+
+    window.addEventListener('message', handleExtensionMessage);
+    window.postMessage({ type: 'SMARTCART_PING_EXTENSION' }, '*');
+    return () => window.removeEventListener('message', handleExtensionMessage);
+  }, [loadProducts]);
+
+  // Initiales Laden von Produkten und Einkaufsliste
   useEffect(() => {
     async function loadInitialData() {
       try {
-        const [prodRes, listRes] = await Promise.all([
-          fetch('/api/products'),
-          fetch('/api/list'),
-        ]);
-
-        if (prodRes.ok) {
-          const prodData = await prodRes.json();
-          if (prodData.ok && prodData.products?.length > 0) {
-            setProducts(prodData.products);
-          }
-        }
-
+        await loadProducts();
+        const listRes = await fetch('/api/list');
         if (listRes.ok) {
           const listData = await listRes.json();
           if (listData.ok) {
@@ -150,21 +155,14 @@ export default function App() {
             return;
           }
         }
-        throw new Error('Fallback auf lokalen Modus');
+        setSyncStatus('offline');
       } catch {
         setSyncStatus('offline');
-        setShoppingList([
-          { id: 'hafermilch', qty: 3 },
-          { id: 'magerquark', qty: 2 },
-          { id: 'spaghetti', qty: 2 },
-          { id: 'toilettenpapier', qty: 1 },
-        ]);
       }
     }
     loadInitialData();
-  }, []);
+  }, [loadProducts]);
 
-  // Änderungen automatisch in Cloudflare D1 speichern
   const persistState = useCallback(async (nextList, nextPlz, nextStrategy) => {
     if (syncStatus === 'offline') return;
     setSyncStatus('saving');
@@ -172,11 +170,7 @@ export default function App() {
       await fetch('/api/list', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plz: nextPlz,
-          strategy: nextStrategy,
-          list: nextList,
-        }),
+        body: JSON.stringify({ plz: nextPlz, strategy: nextStrategy, list: nextList }),
       });
       setSyncStatus('synced');
     } catch {
@@ -184,13 +178,91 @@ export default function App() {
     }
   }, [syncStatus]);
 
+  // Startet Live-Preisabruf (Server: dm & Lidl | Browser-Extension: REWE)
+  const handleRefreshLivePrices = async () => {
+    setPriceSyncState({ running: true, message: 'Rufe Live-Preise von dm & Lidl ab...' });
+    try {
+      const res = await fetch('/api/refresh-server-prices', { method: 'POST' });
+      const data = await res.json();
+      await loadProducts();
+
+      const serverMsg = data.ok
+        ? `dm (${data.dmUpdated}) & Lidl (${data.lidlUpdated}) aktualisiert`
+        : 'Server-Abruf abgeschlossen';
+
+      if (extensionInstalled) {
+        setPriceSyncState({
+          running: true,
+          message: `${serverMsg} · Frage REWE-Preise über Chrome ab...`,
+        });
+
+        // Alle Artikel auf der Einkaufsliste (plus Top-Basisartikel) bei REWE abfragen
+        const targetIds = new Set(shoppingList.map((i) => i.id));
+        products.slice(0, 25).forEach((p) => targetIds.add(p.id));
+
+        const queries = products
+          .filter((p) => targetIds.has(p.id))
+          .map((p) => ({
+            productId: p.id,
+            query: p.prices?.rewe?.searchQuery || p.name,
+          }));
+
+        window.postMessage({ type: 'SMARTCART_SCRAPE_REWE', queries, plz }, '*');
+      } else {
+        setPriceSyncState({
+          running: false,
+          message: `${serverMsg} (Für REWE-Live-Preise Chrome-Bridge aktivieren)`,
+        });
+      }
+    } catch (err) {
+      setPriceSyncState({ running: false, message: 'Fehler beim Preisabruf' });
+    }
+  };
+
+  const handleCreateProduct = async (e) => {
+    e.preventDefault();
+    if (!newProd.name.trim()) return;
+
+    await fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newProd.name.trim(),
+        category: newProd.category,
+        unit: newProd.unit,
+        prices: {
+          rewe: { price: newProd.rewePrice, externalId: newProd.reweId, searchQuery: newProd.name },
+          dm: { price: newProd.dmPrice, externalId: newProd.dmDan, searchQuery: newProd.dmPrice ? newProd.name : null },
+          lidl: { price: newProd.lidlPrice, searchQuery: newProd.name },
+          aldi: { price: newProd.aldiPrice, searchQuery: newProd.name },
+        },
+      }),
+    });
+
+    await loadProducts();
+    setNewProd({
+      name: '',
+      category: 'Milch & Kühlregal',
+      unit: '1 Stück',
+      rewePrice: '',
+      reweId: '',
+      dmPrice: '',
+      dmDan: '',
+      lidlPrice: '',
+      aldiPrice: '',
+    });
+    setAddModalOpen(false);
+  };
+
   const aldiRegion = useMemo(() => getAldiRegion(plz), [plz]);
   const categories = useMemo(() => ['Alle', ...Array.from(new Set(products.map((p) => p.category)))], [products]);
 
   const filteredCatalog = useMemo(() => {
     return products.filter((p) => {
       const matchesCat = selectedCategory === 'Alle' || p.category === selectedCategory;
-      const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch =
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.category.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCat && matchesSearch;
     });
   }, [products, selectedCategory, searchQuery]);
@@ -201,8 +273,8 @@ export default function App() {
         const product = products.find((p) => p.id === item.id);
         if (!product) return null;
 
-        const availableStores = Object.entries(product.prices)
-          .filter(([, data]) => data && data.price !== null)
+        const availableStores = Object.entries(product.prices || {})
+          .filter(([, data]) => data && data.price !== null && data.price !== undefined)
           .map(([storeId, data]) => ({ storeId, ...data }));
 
         const cheapestOverall = availableStores.reduce(
@@ -231,8 +303,8 @@ export default function App() {
 
     detailedList.forEach((item) => {
       Object.keys(STORES).forEach((storeId) => {
-        const storeInfo = item.prices[storeId];
-        if (storeInfo && storeInfo.price !== null) {
+        const storeInfo = item.prices?.[storeId];
+        if (storeInfo && storeInfo.price !== null && storeInfo.price !== undefined) {
           totals[storeId] += storeInfo.price * item.qty;
         } else {
           missing[storeId].push(item.name);
@@ -273,7 +345,7 @@ export default function App() {
 
       if (strategy === 'single') {
         const sId = bestSingleStore.id;
-        if (item.prices[sId]?.price !== null) {
+        if (item.prices?.[sId]?.price !== null && item.prices?.[sId]?.price !== undefined) {
           chosenStore = sId;
           chosenData = item.prices[sId];
         } else if (item.cheapestOverall) {
@@ -376,7 +448,6 @@ export default function App() {
     };
   }, [plz, dmDeliveryMode, reweDeliveryMode, activePlan]);
 
-  // Sendet den Warenkorb-Befehl direkt an die SmartCart Chrome-Extension
   const triggerExtensionCartFill = (store) => {
     setOrderFeedback((prev) => ({ ...prev, [store]: 'sending' }));
     window.postMessage(
@@ -393,7 +464,7 @@ export default function App() {
       setTimeout(() => {
         setOrderFeedback((prev) => ({
           ...prev,
-          [store]: 'Extension nicht erkannt – Nutze JSON-Export oder installiere smartcart-bridge/',
+          [store]: 'Extension nicht erkannt – Nutze JSON-Export oder lade smartcart-bridge/',
         }));
       }, 800);
     }
@@ -413,7 +484,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-16">
       {/* Top Navigation */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="bg-emerald-600 text-white p-2 rounded-xl shadow-sm">
               <ShoppingCart className="w-5 h-5" />
@@ -422,18 +493,29 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-lg tracking-tight text-slate-900">SmartCart DE</h1>
                 <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                  Cloudflare D1
+                  {products.length} Artikel
                 </span>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
-                dm · REWE · Lidl · {aldiRegion}
+                REWE Vollsortiment · dm · Lidl · {aldiRegion}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Extension & Sync Status */}
-            <div className="hidden md:flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Live-Preise Button */}
+            <button
+              onClick={handleRefreshLivePrices}
+              disabled={priceSyncState.running}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition cursor-pointer disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${priceSyncState.running ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Live-Preise abrufen</span>
+              <span className="sm:hidden">Preise</span>
+            </button>
+
+            {/* Status Badges */}
+            <div className="hidden lg:flex items-center gap-2 text-xs">
               <span
                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${
                   extensionInstalled
@@ -445,35 +527,39 @@ export default function App() {
                 {extensionInstalled ? 'Bridge aktiv' : 'Bridge bereit'}
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                {syncStatus === 'saving' ? (
-                  <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />
-                ) : (
-                  <Cloud className="w-3 h-3 text-emerald-600" />
-                )}
-                {userEmail !== 'default' ? userEmail : syncStatus === 'offline' ? 'Lokal' : 'D1 Sync'}
+                <Cloud className="w-3 h-3 text-emerald-600" />
+                {syncStatus === 'offline' ? 'Lokal' : 'D1 Sync'}
               </span>
             </div>
 
             {/* PLZ Selector */}
-            <form onSubmit={handlePlzSubmit} className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+            <form onSubmit={handlePlzSubmit} className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200">
               <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
               <input
                 type="text"
                 maxLength={5}
                 value={plzInput}
                 onChange={(e) => setPlzInput(e.target.value)}
-                className="w-14 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none"
+                className="w-12 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none"
                 aria-label="Postleitzahl"
               />
               <button
                 type="submit"
-                className="text-xs font-medium bg-white hover:bg-slate-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 shadow-2xs transition"
+                className="text-xs font-medium bg-white hover:bg-slate-50 text-slate-700 px-2 py-0.5 rounded-lg border border-slate-200"
               >
                 OK
               </button>
             </form>
           </div>
         </div>
+
+        {/* Statuszeile für Live-Preisabruf */}
+        {priceSyncState.message && (
+          <div className="bg-emerald-900 text-emerald-50 text-xs py-1.5 px-4 text-center flex items-center justify-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-emerald-300" />
+            <span>{priceSyncState.message}</span>
+          </div>
+        )}
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
@@ -581,19 +667,27 @@ export default function App() {
 
         {/* Main 2-Column Workspace */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Product Catalog */}
+          {/* Left Column: Product Catalog (105+ Artikel) */}
           <div className="lg:col-span-5 space-y-4">
             <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-2xs">
-              <h2 className="font-bold text-base text-slate-900 mb-3 flex items-center gap-2">
-                <Package className="w-4 h-4 text-emerald-600" />
-                Artikelsuche & Standardprodukte
-              </h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                  <Package className="w-4 h-4 text-emerald-600" />
+                  Katalog ({filteredCatalog.length})
+                </h2>
+                <button
+                  onClick={() => setAddModalOpen(true)}
+                  className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg flex items-center gap-1 border border-emerald-200 transition"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" /> Neues Produkt
+                </button>
+              </div>
 
               <div className="relative mb-3">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Produkt suchen (z. B. Haferdrink, Quark, Tabs)..."
+                  placeholder="Suche in über 100 Grundprodukten..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500"
@@ -616,11 +710,13 @@ export default function App() {
                 ))}
               </div>
 
-              <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[580px] overflow-y-auto pr-1">
                 {filteredCatalog.map((product) => {
                   const inCart = shoppingList.find((i) => i.id === product.id);
-                  const validPrices = Object.entries(product.prices).filter(([, d]) => d?.price !== null);
-                  const minPriceObj = validPrices.reduce((min, cur) => (cur[1].price < min[1].price ? cur : min), validPrices[0]);
+                  const validPrices = Object.entries(product.prices || {}).filter(([, d]) => d?.price !== null && d?.price !== undefined);
+                  const minPriceObj = validPrices.length
+                    ? validPrices.reduce((min, cur) => (cur[1].price < min[1].price ? cur : min), validPrices[0])
+                    : null;
 
                   return (
                     <div
@@ -643,6 +739,9 @@ export default function App() {
                             <span>
                               ab <strong className="text-slate-700">{formatEur(minPriceObj[1].price)}</strong> ({STORES[minPriceObj[0]].short})
                             </span>
+                          )}
+                          {product.prices?.dm?.price === null && (
+                            <span className="text-[10px] text-slate-400">(nicht bei dm)</span>
                           )}
                         </div>
                       </div>
@@ -683,10 +782,10 @@ export default function App() {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                 <h2 className="font-bold text-base text-slate-900">
-                  Preisvergleich deiner Einkaufsliste
+                  Preisvergleich deiner Einkaufsliste ({detailedList.length} Positionen)
                 </h2>
                 <span className="text-xs text-slate-500">
-                  Grün = Aktive Zuweisung ({strategy === 'split' ? 'Smart Split' : strategy === 'single' ? '1 Markt' : 'Nur Online'})
+                  Grün = Aktive Zuweisung
                 </span>
               </div>
 
@@ -705,7 +804,7 @@ export default function App() {
                         <th className="py-3 px-3 text-right">dm</th>
                         <th className="py-3 px-3 text-right">REWE</th>
                         <th className="py-3 px-3 text-right">Lidl</th>
-                        <th className="py-3 px-3 text-right">{aldiRegion.replace('Aldi ', 'Aldi ')}</th>
+                        <th className="py-3 px-3 text-right">{aldiRegion}</th>
                         <th className="py-3 px-2"></th>
                       </tr>
                     </thead>
@@ -741,11 +840,11 @@ export default function App() {
                             </td>
 
                             {['dm', 'rewe', 'lidl', 'aldi'].map((storeId) => {
-                              const info = item.prices[storeId];
+                              const info = item.prices?.[storeId];
                               const isAssigned = assignedStoreId === storeId;
-                              if (!info || info.price === null) {
+                              if (!info || info.price === null || info.price === undefined) {
                                 return (
-                                  <td key={storeId} className="py-3 px-3 text-right text-xs text-slate-300">
+                                  <td key={storeId} className="py-3 px-3 text-right text-xs text-slate-300" title="Nicht im Sortiment">
                                     n. v.
                                   </td>
                                 );
@@ -787,14 +886,14 @@ export default function App() {
                     <tfoot>
                       <tr className="bg-slate-50 border-t border-slate-200 font-bold text-xs text-slate-700">
                         <td className="py-3 px-4" colSpan={2}>
-                          Gesamtsumme (wenn 100 % in 1 Markt)
+                          Gesamtsumme (1 Markt)
                         </td>
                         {['dm', 'rewe', 'lidl', 'aldi'].map((storeId) => (
                           <td key={storeId} className="py-3 px-3 text-right">
                             <div>{formatEur(storeTotals.totals[storeId])}</div>
                             {storeTotals.missing[storeId].length > 0 && (
                               <div className="text-[10px] font-normal text-amber-600">
-                                ({storeTotals.missing[storeId].length} fehlt)
+                                ({storeTotals.missing[storeId].length} n. v.)
                               </div>
                             )}
                           </td>
@@ -809,6 +908,134 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* Neues Produkt Modal */}
+      {addModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <form
+            onSubmit={handleCreateProduct}
+            className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-lg text-slate-900">Neues Lebensmittel anlegen</h3>
+              <button
+                type="button"
+                onClick={() => setAddModalOpen(false)}
+                className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg"
+              >
+                Abbrechen
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Produktname *</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="z. B. Bio Dinkelmehl Type 630"
+                  value={newProd.name}
+                  onChange={(e) => setNewProd({ ...newProd, name: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Kategorie</label>
+                <select
+                  value={newProd.category}
+                  onChange={(e) => setNewProd({ ...newProd, category: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white"
+                >
+                  {categories.filter((c) => c !== 'Alle').map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="Sonstiges">Sonstiges</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Packungsgröße</label>
+                <input
+                  type="text"
+                  placeholder="z. B. 1 kg / 500 ml"
+                  value={newProd.unit}
+                  onChange={(e) => setNewProd({ ...newProd, unit: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-semibold text-red-700 mb-1">REWE Preis (€)</label>
+                <input
+                  type="text"
+                  placeholder="1.49"
+                  value={newProd.rewePrice}
+                  onChange={(e) => setNewProd({ ...newProd, rewePrice: e.target.value })}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-red-700 mb-1">REWE Product-ID</label>
+                <input
+                  type="text"
+                  placeholder="z. B. 8412093"
+                  value={newProd.reweId}
+                  onChange={(e) => setNewProd({ ...newProd, reweId: e.target.value })}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-blue-900 mb-1">dm Preis (€, leer = n. v.)</label>
+                <input
+                  type="text"
+                  placeholder="leer lassen falls n. v."
+                  value={newProd.dmPrice}
+                  onChange={(e) => setNewProd({ ...newProd, dmPrice: e.target.value })}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-blue-900 mb-1">dm DAN-Nummer</label>
+                <input
+                  type="text"
+                  placeholder="z. B. 734912"
+                  value={newProd.dmDan}
+                  onChange={(e) => setNewProd({ ...newProd, dmDan: e.target.value })}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-amber-800 mb-1">Lidl Preis (€)</label>
+                <input
+                  type="text"
+                  placeholder="1.29"
+                  value={newProd.lidlPrice}
+                  onChange={(e) => setNewProd({ ...newProd, lidlPrice: e.target.value })}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-sky-800 mb-1">Aldi Preis (€)</label>
+                <input
+                  type="text"
+                  placeholder="1.29"
+                  value={newProd.aldiPrice}
+                  onChange={(e) => setNewProd({ ...newProd, aldiPrice: e.target.value })}
+                  className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl text-sm transition"
+            >
+              Produkt in D1-Datenbank speichern
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Checkout & Cart-Bridge Modal */}
       {checkoutModalOpen && (
@@ -871,7 +1098,7 @@ export default function App() {
                           </button>
                         </div>
 
-                        <ul className="space-y-1.5 text-xs mb-4 max-h-36 overflow-y-auto">
+                        <ul className="space-y-1.5 text-xs mb-4 max-h-40 overflow-y-auto">
                           {activePlan.buckets.dm.map((item) => (
                             <li key={item.id} className="flex justify-between bg-white p-2 rounded border border-blue-100">
                               <span>
@@ -944,7 +1171,7 @@ export default function App() {
                           </button>
                         </div>
 
-                        <ul className="space-y-1.5 text-xs mb-4 max-h-36 overflow-y-auto">
+                        <ul className="space-y-1.5 text-xs mb-4 max-h-40 overflow-y-auto">
                           {activePlan.buckets.rewe.map((item) => (
                             <li key={item.id} className="flex justify-between bg-white p-2 rounded border border-red-100">
                               <span>

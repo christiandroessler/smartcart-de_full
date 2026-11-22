@@ -1,8 +1,13 @@
 name = "smartcart-de_full"
+main = "worker.js"
 compatibility_date = "2026-11-01"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
+
+[triggers]
+crons = ["0 7 * * 1,4"]
 
 [[d1_databases]]
 binding = "DB"
