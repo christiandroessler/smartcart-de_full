@@ -3,8 +3,7 @@ function getUserKey(request) {
   return cfEmail ? cfEmail.toLowerCase().trim() : "default";
 }
 
-// Live-Preisabruf direkt über die öffentliche dm-Produktsuch-API
-async function refreshDmLivePrices(env, limit = 30) {
+async function refreshDmLivePrices(env, limit = 35) {
   const { results: dmItems } = await env.DB.prepare(
     `SELECT product_id, search_query, external_id
      FROM store_prices
@@ -26,7 +25,6 @@ async function refreshDmLivePrices(env, limit = 30) {
           "Accept": "application/json",
         },
       });
-
       if (!res.ok) continue;
       const data = await res.json();
       const hit = data?.products?.[0];
@@ -43,30 +41,18 @@ async function refreshDmLivePrices(env, limit = 30) {
               `UPDATE store_prices
                SET price = ?, external_id = ?, brand_name = ?, promo = ?, promo_label = ?, updated_at = CURRENT_TIMESTAMP
                WHERE product_id = ? AND store = 'dm'`
-            ).bind(
-              livePrice,
-              liveDan,
-              liveTitle,
-              isPromo ? 1 : 0,
-              isPromo ? "dm Preis-Tipp" : null,
-              row.product_id
-            )
+            ).bind(livePrice, liveDan, liveTitle, isPromo ? 1 : 0, isPromo ? "dm Preis-Tipp" : null, row.product_id)
           );
           updated++;
         }
       }
-    } catch (e) {
-      // Einzelnen Fehler überspringen, damit andere Produkte weiterlaufen
-    }
+    } catch {}
   }
 
-  if (statements.length > 0) {
-    await env.DB.batch(statements);
-  }
+  if (statements.length > 0) await env.DB.batch(statements);
   return updated;
 }
 
-// Live-Wochenangebote von Lidl abrufen (öffentliche Such-/Angebots-API)
 async function refreshLidlLivePrices(env, limit = 25) {
   const { results: lidlItems } = await env.DB.prepare(
     `SELECT product_id, search_query
@@ -109,40 +95,28 @@ async function refreshLidlLivePrices(env, limit = 25) {
         );
         updated++;
       }
-    } catch {
-      // Fallback auf bestehenden Referenzpreis behalten
-    }
+    } catch {}
   }
 
-  if (statements.length > 0) {
-    await env.DB.batch(statements);
-  }
+  if (statements.length > 0) await env.DB.batch(statements);
   return updated;
 }
 
 export default {
-  // Automatischer Cronjob (Montag & Donnerstag morgens)
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(
-      Promise.all([
-        refreshDmLivePrices(env, 45),
-        refreshLidlLivePrices(env, 35),
-      ])
-    );
+    ctx.waitUntil(Promise.all([refreshDmLivePrices(env, 45), refreshLidlLivePrices(env, 35)]));
   },
 
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. GET /api/products -> Alle Produkte & Preise inkl. Suchbegriffen für Browser-Scraper
+    // 1. GET /api/products
     if (url.pathname === "/api/products" && request.method === "GET") {
       try {
         const { results: products } = await env.DB.prepare(
           "SELECT * FROM products ORDER BY category, name"
         ).all();
-        const { results: prices } = await env.DB.prepare(
-          "SELECT * FROM store_prices"
-        ).all();
+        const { results: prices } = await env.DB.prepare("SELECT * FROM store_prices").all();
 
         const formatted = products.map((prod) => {
           const storeMap = {};
@@ -159,7 +133,11 @@ export default {
               };
             }
           }
-          return { ...prod, prices: storeMap };
+          return {
+            ...prod,
+            isGlutenFree: Boolean(prod.is_gluten_free),
+            prices: storeMap,
+          };
         });
 
         return Response.json({ ok: true, products: formatted });
@@ -168,11 +146,11 @@ export default {
       }
     }
 
-    // 2. POST /api/products -> Neues Grundprodukt anlegen
+    // 2. POST /api/products
     if (url.pathname === "/api/products" && request.method === "POST") {
       try {
         const body = await request.json();
-        const { name, category, unit, prices } = body;
+        const { name, category, unit, isGlutenFree, prices } = body;
         const id =
           name
             .toLowerCase()
@@ -184,8 +162,8 @@ export default {
 
         const statements = [
           env.DB.prepare(
-            "INSERT INTO products (id, name, category, unit, base_unit, base_factor) VALUES (?, ?, ?, ?, 'Stück', 1.0)"
-          ).bind(id, name, category || "Sonstiges", unit || "1 Stück"),
+            "INSERT INTO products (id, name, category, unit, base_unit, base_factor, is_gluten_free) VALUES (?, ?, ?, ?, 'Stück', 1.0, ?)"
+          ).bind(id, name, category || "Sonstiges", unit || "1 Stück", isGlutenFree ? 1 : 0),
         ];
 
         for (const store of ["dm", "rewe", "lidl", "aldi"]) {
@@ -219,7 +197,57 @@ export default {
       }
     }
 
-    // 3. POST /api/refresh-server-prices -> Startet Live-Abruf für dm & Lidl auf Knopfdruck
+    // 3. Gespeicherte Warenkörbe (GET / POST / DELETE /api/saved-carts)
+    if (url.pathname === "/api/saved-carts" && request.method === "GET") {
+      const userKey = getUserKey(request);
+      try {
+        const { results } = await env.DB.prepare(
+          "SELECT id, name, items_json, created_at FROM saved_carts WHERE user_key = ? ORDER BY created_at DESC"
+        ).bind(userKey).all();
+
+        const carts = results.map((r) => ({
+          id: r.id,
+          name: r.name,
+          items: JSON.parse(r.items_json || "[]"),
+          createdAt: r.created_at,
+        }));
+        return Response.json({ ok: true, carts });
+      } catch (err) {
+        return Response.json({ ok: false, error: err.message }, { status: 500 });
+      }
+    }
+
+    if (url.pathname === "/api/saved-carts" && request.method === "POST") {
+      const userKey = getUserKey(request);
+      try {
+        const { name, items } = await request.json();
+        if (!name || !Array.isArray(items) || items.length === 0) {
+          return Response.json({ ok: false, error: "Name und Artikel erforderlich" }, { status: 400 });
+        }
+        const id = "cart_" + Date.now();
+        await env.DB.prepare(
+          "INSERT INTO saved_carts (id, user_key, name, items_json) VALUES (?, ?, ?, ?)"
+        ).bind(id, userKey, name.trim(), JSON.stringify(items)).run();
+        return Response.json({ ok: true, id });
+      } catch (err) {
+        return Response.json({ ok: false, error: err.message }, { status: 500 });
+      }
+    }
+
+    if (url.pathname === "/api/saved-carts" && request.method === "DELETE") {
+      const userKey = getUserKey(request);
+      const id = url.searchParams.get("id");
+      try {
+        await env.DB.prepare(
+          "DELETE FROM saved_carts WHERE id = ? AND user_key = ?"
+        ).bind(id, userKey).run();
+        return Response.json({ ok: true });
+      } catch (err) {
+        return Response.json({ ok: false, error: err.message }, { status: 500 });
+      }
+    }
+
+    // 4. POST /api/refresh-server-prices
     if (url.pathname === "/api/refresh-server-prices" && request.method === "POST") {
       try {
         const [dmCount, lidlCount] = await Promise.all([
@@ -232,35 +260,21 @@ export default {
       }
     }
 
-    // 4. POST /api/sync-prices -> Nimmt Live-Preise aus der Chrome-Extension (z.B. REWE) entgegen
+    // 5. POST /api/sync-prices
     if (url.pathname === "/api/sync-prices" && request.method === "POST") {
       try {
         const { updates } = await request.json();
         if (!Array.isArray(updates) || updates.length === 0) {
           return Response.json({ ok: true, updatedCount: 0 });
         }
-
         const statements = updates.map((u) =>
           env.DB.prepare(
             `UPDATE store_prices
-             SET price = ?,
-                 external_id = COALESCE(?, external_id),
-                 brand_name = COALESCE(?, brand_name),
-                 promo = ?,
-                 promo_label = ?,
-                 updated_at = CURRENT_TIMESTAMP
+             SET price = ?, external_id = COALESCE(?, external_id), brand_name = COALESCE(?, brand_name),
+                 promo = ?, promo_label = ?, updated_at = CURRENT_TIMESTAMP
              WHERE product_id = ? AND store = ?`
-          ).bind(
-            u.price,
-            u.externalId || null,
-            u.brandName || null,
-            u.promo ? 1 : 0,
-            u.promoLabel || null,
-            u.productId,
-            u.store
-          )
+          ).bind(u.price, u.externalId || null, u.brandName || null, u.promo ? 1 : 0, u.promoLabel || null, u.productId, u.store)
         );
-
         await env.DB.batch(statements);
         return Response.json({ ok: true, updatedCount: updates.length });
       } catch (err) {
@@ -268,43 +282,34 @@ export default {
       }
     }
 
-    // 5. GET /api/list
+    // 6. GET /api/list
     if (url.pathname === "/api/list" && request.method === "GET") {
       const userKey = getUserKey(request);
       try {
         let settings = await env.DB.prepare(
           "SELECT plz, strategy FROM user_settings WHERE user_key = ?"
         ).bind(userKey).first();
-
         if (!settings) {
           await env.DB.prepare(
             "INSERT INTO user_settings (user_key, plz, strategy) VALUES (?, '37308', 'split')"
           ).bind(userKey).run();
           settings = { plz: "37308", strategy: "split" };
         }
-
         const { results: items } = await env.DB.prepare(
           "SELECT product_id as id, qty FROM shopping_list WHERE user_key = ?"
         ).bind(userKey).all();
 
-        return Response.json({
-          ok: true,
-          user: userKey,
-          plz: settings.plz,
-          strategy: settings.strategy,
-          list: items,
-        });
+        return Response.json({ ok: true, user: userKey, plz: settings.plz, strategy: settings.strategy, list: items });
       } catch (err) {
         return Response.json({ ok: false, error: err.message }, { status: 500 });
       }
     }
 
-    // 6. POST /api/list
+    // 7. POST /api/list
     if (url.pathname === "/api/list" && request.method === "POST") {
       const userKey = getUserKey(request);
       try {
         const { plz, strategy, list } = await request.json();
-
         if (plz || strategy) {
           await env.DB.prepare(
             `INSERT INTO user_settings (user_key, plz, strategy, updated_at)
@@ -315,23 +320,17 @@ export default {
                updated_at = CURRENT_TIMESTAMP`
           ).bind(userKey, plz || "37308", strategy || "split").run();
         }
-
         if (Array.isArray(list)) {
-          const statements = [
-            env.DB.prepare("DELETE FROM shopping_list WHERE user_key = ?").bind(userKey),
-          ];
+          const statements = [env.DB.prepare("DELETE FROM shopping_list WHERE user_key = ?").bind(userKey)];
           for (const item of list) {
             if (item.id && item.qty > 0) {
               statements.push(
-                env.DB.prepare(
-                  "INSERT INTO shopping_list (user_key, product_id, qty) VALUES (?, ?, ?)"
-                ).bind(userKey, item.id, item.qty)
+                env.DB.prepare("INSERT INTO shopping_list (user_key, product_id, qty) VALUES (?, ?, ?)").bind(userKey, item.id, item.qty)
               );
             }
           }
           await env.DB.batch(statements);
         }
-
         return Response.json({ ok: true, user: userKey });
       } catch (err) {
         return Response.json({ ok: false, error: err.message }, { status: 500 });
