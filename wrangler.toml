@@ -5,4 +5,4 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "smartcart-db"
-database_id = "DEINE_D1_DATABASE_ID_HIER_EINTRAGEN"
+database_id = "5b422584-f1d8-4b57-b5ff-b47a64842d84"
