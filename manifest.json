@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SmartCart DE – dm & REWE Warenkorb-Bridge",
-  "version": "1.0.0",
-  "description": "Überträgt geplante Einkaufslisten aus SmartCart DE direkt in deine eingeloggten Warenkörbe bei dm.de und shop.rewe.de.",
+  "name": "SmartCart DE – REWE & dm Live-Preise + Warenkorb-Bridge",
+  "version": "2.0.0",
+  "description": "Ruft tagesaktuelle REWE-Preise über deine Browser-Session ab und befüllt Warenkörbe bei dm.de und shop.rewe.de.",
   "permissions": [
     "storage",
     "tabs",

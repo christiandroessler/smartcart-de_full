@@ -12,4 +12,4 @@ crons = ["0 7 * * 1,4"]
 [[d1_databases]]
 binding = "DB"
 database_name = "smartcart-db"
-database_id = "5b422584-f1d8-4b57-b5ff-b47a64842d84"
+database_id = "DEINE_D1_DATABASE_ID_HIER_EINTRAGEN"
