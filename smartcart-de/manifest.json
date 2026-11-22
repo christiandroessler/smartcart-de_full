@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "SmartCart DE – dm & REWE Warenkorb-Bridge",
+  "version": "1.0.0",
+  "description": "Überträgt geplante Einkaufslisten aus SmartCart DE direkt in deine eingeloggten Warenkörbe bei dm.de und shop.rewe.de.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.dm.de/*",
+    "https://shop.rewe.de/*",
+    "https://*.pages.dev/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.pages.dev/*",
+        "http://localhost/*"
+      ],
+      "js": ["webapp-bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.dm.de/*",
+        "https://shop.rewe.de/*"
+      ],
+      "js": ["shop-injector.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
